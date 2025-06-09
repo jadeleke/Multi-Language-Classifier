@@ -6,6 +6,10 @@ from flask import Flask, request, render_template, redirect, url_for
 from werkzeug.utils import secure_filename
 from pydub import AudioSegment
 
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress INFO, WARNING, and ERROR logs from TensorFlow
+os.environ['CUDA_VISIBLE_DEVICES'] = '' 
+
 # Configuration
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'wav', 'mp3'}
@@ -88,3 +92,7 @@ def index():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+
+
+#docker push adeleke1/flask-lang-classifier:latest

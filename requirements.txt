@@ -4,3 +4,4 @@ librosa
 tensorflow
 matplotlib
 pydub
+gunicorn
