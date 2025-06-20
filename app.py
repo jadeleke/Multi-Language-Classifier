@@ -1,57 +1,46 @@
 import os
-
-# 🛠 FIX for TensorFlow-Protobuf compatibility issue
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Hide TF warnings
-os.environ["CUDA_VISIBLE_DEVICES"] = ""   # Disable GPU if present
-
-# TensorFlow safe import
-try:
-    import tensorflow as tf
-except Exception as e:
-    raise ImportError(f"❌ TensorFlow failed to import: {e}")
-
-# Flask & audio processing imports
+import numpy as np
+import librosa
+import tensorflow as tf
 from flask import Flask, request, render_template, redirect, url_for
 from werkzeug.utils import secure_filename
 from pydub import AudioSegment
-import numpy as np
-import librosa
 
-# Constants
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress INFO, WARNING, and ERROR logs from TensorFlow
+os.environ['CUDA_VISIBLE_DEVICES'] = '' 
+
+# Configuration
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'wav', 'mp3'}
 MODEL_PATH = 'multiclass_model_aug_3_lang.keras'
 LABELS = ["Akan", "Dagbani", "Ikposo"]
 
-# Audio feature parameters
+# Audio processing parameters
 SR = 16000
-DURATION = 15  # seconds
+DURATION = 15
 N_MELS = 32
 N_FFT = 1024
 HOP_LENGTH = 1024
 MAX_PAD_LEN = int(np.ceil(DURATION * SR / HOP_LENGTH))
 
-# Flask app setup
+# App setup
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Load model
 if os.path.exists(MODEL_PATH):
-    try:
-        model = tf.keras.models.load_model(MODEL_PATH)
-        print("✅ Model loaded successfully.")
-    except Exception as e:
-        raise RuntimeError(f"❌ Failed to load model: {e}")
+    model = tf.keras.models.load_model(MODEL_PATH)
+    print("✅ Model loaded successfully.")
 else:
-    raise FileNotFoundError(f"❌ Model file not found at {MODEL_PATH}")
+    raise FileNotFoundError(f"Model not found at {MODEL_PATH}")
 
-# Allowed audio file extensions
+# Utility: Check file extension
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Feature extraction
+# Utility: Extract features
 def extract_features(file_path):
     try:
         ext = os.path.splitext(file_path)[1].lower()
@@ -70,10 +59,10 @@ def extract_features(file_path):
         log_mel = log_mel[:, :MAX_PAD_LEN]
         return log_mel.T
     except Exception as e:
-        print(f"Error during feature extraction: {e}")
+        print(f"Error processing {file_path}: {e}")
         return None
 
-# Prediction function
+# Utility: Predict language
 def predict_language(file_path):
     features = extract_features(file_path)
     if features is None:
@@ -84,7 +73,7 @@ def predict_language(file_path):
     pred_idx = np.argmax(prediction)
     return LABELS[pred_idx], float(prediction[0][pred_idx]) * 100
 
-# Main route
+# Routes
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -101,7 +90,9 @@ def index():
             return render_template("index.html", filename=filename, label=pred_label, confidence=confidence)
     return render_template("index.html")
 
-# Run the app
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == "__main__":
+    app.run(debug=True)
+
+
+
+#docker push adeleke1/flask-lang-classifier:latest
