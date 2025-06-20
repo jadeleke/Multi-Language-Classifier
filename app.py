@@ -1,30 +1,28 @@
 import os
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"  # Avoid TensorFlow protobuf crash
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Hide TF logs
+os.environ['CUDA_VISIBLE_DEVICES'] = ''   # Disable GPU
+
 import numpy as np
 import librosa
 
-# TensorFlow safe import
+# Safe TensorFlow import
 try:
     import tensorflow as tf
 except Exception as e:
     raise ImportError(f"❌ TensorFlow failed to import: {e}")
 
-# Flask imports
 from flask import Flask, request, render_template, redirect, url_for
 from werkzeug.utils import secure_filename
-
-# Audio handling
 from pydub import AudioSegment
 
-# Environment and model settings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Hide TensorFlow logs
-os.environ['CUDA_VISIBLE_DEVICES'] = ''   # Disable GPU if any
-
+# Config
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'wav', 'mp3'}
 MODEL_PATH = 'multiclass_model_aug_3_lang.keras'
 LABELS = ["Akan", "Dagbani", "Ikposo"]
 
-# Audio processing constants
+# Audio preprocessing constants
 SR = 16000
 DURATION = 15
 N_MELS = 32
@@ -32,12 +30,12 @@ N_FFT = 1024
 HOP_LENGTH = 1024
 MAX_PAD_LEN = int(np.ceil(DURATION * SR / HOP_LENGTH))
 
-# Flask app setup
+# Flask app
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Load the trained model
+# Load model
 if os.path.exists(MODEL_PATH):
     try:
         model = tf.keras.models.load_model(MODEL_PATH)
@@ -47,11 +45,11 @@ if os.path.exists(MODEL_PATH):
 else:
     raise FileNotFoundError(f"❌ Model file not found at {MODEL_PATH}")
 
-# Check for valid audio file extension
+# Check file extension
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Audio feature extraction
+# Extract features
 def extract_features(file_path):
     try:
         ext = os.path.splitext(file_path)[1].lower()
@@ -70,10 +68,10 @@ def extract_features(file_path):
         log_mel = log_mel[:, :MAX_PAD_LEN]
         return log_mel.T
     except Exception as e:
-        print(f"Error during feature extraction: {e}")
+        print(f"❌ Error during feature extraction: {e}")
         return None
 
-# Predict language from audio
+# Predict label
 def predict_language(file_path):
     features = extract_features(file_path)
     if features is None:
@@ -84,7 +82,7 @@ def predict_language(file_path):
     pred_idx = np.argmax(prediction)
     return LABELS[pred_idx], float(prediction[0][pred_idx]) * 100
 
-# Flask route: upload + predict
+# Routes
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -101,7 +99,7 @@ def index():
             return render_template("index.html", filename=filename, label=pred_label, confidence=confidence)
     return render_template("index.html")
 
-# Flask app runner
+# Run
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
