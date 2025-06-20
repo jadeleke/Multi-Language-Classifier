@@ -1,3 +1,4 @@
+pip==23.0.1
 Flask
 numpy
 librosa
@@ -5,3 +6,5 @@ tensorflow
 matplotlib
 pydub
 gunicorn
+ffmpeg
+libsndfile1
