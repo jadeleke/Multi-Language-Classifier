@@ -1,36 +1,38 @@
 import os
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"  # Avoid TensorFlow protobuf crash
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Hide TF logs
-os.environ['CUDA_VISIBLE_DEVICES'] = ''   # Disable GPU
 
-import numpy as np
-import librosa
+# 🛠 FIX for TensorFlow-Protobuf compatibility issue
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Hide TF warnings
+os.environ["CUDA_VISIBLE_DEVICES"] = ""   # Disable GPU if present
 
-# Safe TensorFlow import
+# TensorFlow safe import
 try:
     import tensorflow as tf
 except Exception as e:
     raise ImportError(f"❌ TensorFlow failed to import: {e}")
 
+# Flask & audio processing imports
 from flask import Flask, request, render_template, redirect, url_for
 from werkzeug.utils import secure_filename
 from pydub import AudioSegment
+import numpy as np
+import librosa
 
-# Config
+# Constants
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'wav', 'mp3'}
 MODEL_PATH = 'multiclass_model_aug_3_lang.keras'
 LABELS = ["Akan", "Dagbani", "Ikposo"]
 
-# Audio preprocessing constants
+# Audio feature parameters
 SR = 16000
-DURATION = 15
+DURATION = 15  # seconds
 N_MELS = 32
 N_FFT = 1024
 HOP_LENGTH = 1024
 MAX_PAD_LEN = int(np.ceil(DURATION * SR / HOP_LENGTH))
 
-# Flask app
+# Flask app setup
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -45,11 +47,11 @@ if os.path.exists(MODEL_PATH):
 else:
     raise FileNotFoundError(f"❌ Model file not found at {MODEL_PATH}")
 
-# Check file extension
+# Allowed audio file extensions
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Extract features
+# Feature extraction
 def extract_features(file_path):
     try:
         ext = os.path.splitext(file_path)[1].lower()
@@ -68,10 +70,10 @@ def extract_features(file_path):
         log_mel = log_mel[:, :MAX_PAD_LEN]
         return log_mel.T
     except Exception as e:
-        print(f"❌ Error during feature extraction: {e}")
+        print(f"Error during feature extraction: {e}")
         return None
 
-# Predict label
+# Prediction function
 def predict_language(file_path):
     features = extract_features(file_path)
     if features is None:
@@ -82,7 +84,7 @@ def predict_language(file_path):
     pred_idx = np.argmax(prediction)
     return LABELS[pred_idx], float(prediction[0][pred_idx]) * 100
 
-# Routes
+# Main route
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -99,7 +101,7 @@ def index():
             return render_template("index.html", filename=filename, label=pred_label, confidence=confidence)
     return render_template("index.html")
 
-# Run
+# Run the app
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
