@@ -1,36 +1,47 @@
 import os
 import numpy as np
 import librosa
-import streamlit as st
-from pydub import AudioSegment
 import tensorflow as tf
+from flask import Flask, request, render_template, redirect, url_for
+from werkzeug.utils import secure_filename
+from pydub import AudioSegment
 
-# Constants
+# Configuration
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'wav', 'mp3'}
+MODEL_PATH = 'multiclass_model_aug_3_lang.keras'
+LABELS = ["Akan", "Dagbani", "Ikposo"]
+
+# Audio processing parameters
 SR = 16000
 DURATION = 15
 N_MELS = 32
 N_FFT = 1024
 HOP_LENGTH = 1024
 MAX_PAD_LEN = int(np.ceil(DURATION * SR / HOP_LENGTH))
-LABELS = ["Akan", "Dagbani", "Ikposo"]
-MODEL_PATH = 'multiclass_model_aug_3_lang.keras'
 
-# Hide TensorFlow logs
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
+# App setup
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Load model
-@st.cache_resource
-def load_model():
-    return tf.keras.models.load_model(MODEL_PATH)
+if os.path.exists(MODEL_PATH):
+    model = tf.keras.models.load_model(MODEL_PATH)
+    print("✅ Model loaded successfully.")
+else:
+    raise FileNotFoundError(f"Model not found at {MODEL_PATH}")
 
-model = load_model()
+# Utility: Check file extension
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Utility: Extract features
 def extract_features(file_path):
     try:
         ext = os.path.splitext(file_path)[1].lower()
         if ext == ".mp3":
-            tmp = "tmp.wav"
+            tmp = os.path.join(UPLOAD_FOLDER, "tmp.wav")
             audio = AudioSegment.from_file(file_path).set_frame_rate(SR).set_channels(1)[:DURATION * 1000]
             audio.export(tmp, format="wav")
             file_path = tmp
@@ -44,33 +55,36 @@ def extract_features(file_path):
         log_mel = log_mel[:, :MAX_PAD_LEN]
         return log_mel.T
     except Exception as e:
-        st.error(f"Error extracting features: {e}")
+        print(f"Error processing {file_path}: {e}")
         return None
 
+# Utility: Predict language
 def predict_language(file_path):
     features = extract_features(file_path)
     if features is None:
         return None, None
+
     input_tensor = np.expand_dims(features, axis=0)
     prediction = model.predict(input_tensor, verbose=0)
     pred_idx = np.argmax(prediction)
     return LABELS[pred_idx], float(prediction[0][pred_idx]) * 100
 
-# Streamlit App UI
-st.title("🗣️ Multi-Language Audio Classifier")
-uploaded_file = st.file_uploader("Upload a .wav or .mp3 file", type=["wav", "mp3"])
+# Routes
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        if 'file' not in request.files:
+            return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '':
+            return redirect(request.url)
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            pred_label, confidence = predict_language(filepath)
+            return render_template("index.html", filename=filename, label=pred_label, confidence=confidence)
+    return render_template("index.html")
 
-if uploaded_file is not None:
-    file_path = os.path.join("uploads", uploaded_file.name)
-    os.makedirs("uploads", exist_ok=True)
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    st.audio(file_path)
-    with st.spinner("Analyzing..."):
-        label, confidence = predict_language(file_path)
-
-    if label:
-        st.success(f"Prediction: **{label}** ({confidence:.2f}% confidence)")
-    else:
-        st.error("Prediction failed. Try again.")
+if __name__ == "__main__":
+    app.run(debug=True)
